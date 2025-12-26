@@ -2,10 +2,11 @@ import { useState, useRef, useEffect } from 'react';
 
 interface StudentTestProps {}
 
-// Get WebSocket URL based on current location
+// Get WebSocket URL - works for both local and production
 const getWebSocketUrl = () => {
-  const hostname = window.location.hostname;
-  return `ws://${hostname}:3001`;
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const host = window.location.host;
+  return `${protocol}//${host}`;
 };
 
 const StudentTest: React.FC<StudentTestProps> = () => {
@@ -134,7 +135,7 @@ const StudentTest: React.FC<StudentTestProps> = () => {
     } catch (err) {
       console.error('Error starting screen share:', err);
       setConnectionStatus('disconnected');
-      alert('Failed to start test. Make sure:\n1. The server is running (node server.js)\n2. You allow screen sharing');
+      alert('Failed to start test. Make sure:\n1. The server is running\n2. You allow screen sharing');
     }
   };
 

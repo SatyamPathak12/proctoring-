@@ -8,10 +8,11 @@ interface Student {
   isActive: boolean;
 }
 
-// Get WebSocket URL based on current location
+// Get WebSocket URL - works for both local and production
 const getWebSocketUrl = () => {
-  const hostname = window.location.hostname;
-  return `ws://${hostname}:3001`;
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const host = window.location.host;
+  return `${protocol}//${host}`;
 };
 
 const AdminPanel: React.FC = () => {
@@ -151,8 +152,8 @@ const AdminPanel: React.FC = () => {
           
           {connectionStatus !== 'connected' ? (
             <div className="no-students">
-              <p>⚠️ Not connected to server</p>
-              <p className="hint">Make sure the server is running:<br/><code>node server.js</code></p>
+              <p>⚠️ Connecting to server...</p>
+              <p className="hint">Please wait...</p>
             </div>
           ) : activeStudents.length === 0 ? (
             <div className="no-students">

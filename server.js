@@ -1,10 +1,14 @@
 const express = require('express');
 const { WebSocketServer } = require('ws');
 const http = require('http');
+const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
+
+// Serve static files from the dist folder (production build)
+app.use(express.static(path.join(__dirname, 'dist')));
 
 // Store connected clients
 const students = new Map(); // studentId -> ws
@@ -116,8 +120,13 @@ wss.on('connection', (ws) => {
   });
 });
 
-const PORT = 3001;
+// Handle all routes for SPA (Single Page Application)
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+});
+
+const PORT = process.env.PORT || 3001;
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`✅ WebSocket Server running on port ${PORT}`);
-  console.log(`📡 Students and Admins can connect via ws://YOUR_IP:${PORT}`);
+  console.log(`✅ Server running on port ${PORT}`);
+  console.log(`📡 WebSocket ready for connections`);
 });
