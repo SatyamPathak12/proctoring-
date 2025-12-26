@@ -2,14 +2,21 @@ import { useState, useRef, useEffect } from 'react';
 
 interface StudentTestProps {}
 
+// Get WebSocket URL based on current location
+const getWebSocketUrl = () => {
+  const hostname = window.location.hostname;
+  return `ws://${hostname}:3001`;
+};
+
 const StudentTest: React.FC<StudentTestProps> = () => {
   const [studentName, setStudentName] = useState('');
   const [isTestStarted, setIsTestStarted] = useState(false);
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [answers, setAnswers] = useState<Record<number, string>>({});
+  const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected'>('disconnected');
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const channelRef = useRef<BroadcastChannel | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const intervalRef = useRef<number | null>(null);
 
@@ -42,28 +49,60 @@ const StudentTest: React.FC<StudentTestProps> = () => {
   ];
 
   useEffect(() => {
-    channelRef.current = new BroadcastChannel('proctoring-channel');
-    
     return () => {
-      if (channelRef.current) {
-        // Notify admin that student left
-        channelRef.current.postMessage({
-          type: 'student-left',
-          studentId: studentName
-        });
-        channelRef.current.close();
-      }
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(track => track.stop());
-      }
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
+      cleanup();
     };
-  }, [studentName]);
+  }, []);
+
+  const cleanup = () => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        type: 'student-left',
+        studentId: studentName
+      }));
+      wsRef.current.close();
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+    }
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+    }
+  };
+
+  const connectWebSocket = (): Promise<WebSocket> => {
+    return new Promise((resolve, reject) => {
+      const ws = new WebSocket(getWebSocketUrl());
+      
+      ws.onopen = () => {
+        console.log('WebSocket connected');
+        setConnectionStatus('connected');
+        resolve(ws);
+      };
+      
+      ws.onerror = (err) => {
+        console.error('WebSocket error:', err);
+        setConnectionStatus('disconnected');
+        reject(err);
+      };
+      
+      ws.onclose = () => {
+        console.log('WebSocket closed');
+        setConnectionStatus('disconnected');
+      };
+      
+      wsRef.current = ws;
+    });
+  };
 
   const startScreenShare = async () => {
     try {
+      setConnectionStatus('connecting');
+      
+      // Connect to WebSocket server first
+      const ws = await connectWebSocket();
+      
+      // Request screen share
       const stream = await navigator.mediaDevices.getDisplayMedia({
         video: { frameRate: 5 },
         audio: false
@@ -75,12 +114,12 @@ const StudentTest: React.FC<StudentTestProps> = () => {
         videoRef.current.srcObject = stream;
       }
 
-      // Notify admin that student joined
-      channelRef.current?.postMessage({
-        type: 'student-joined',
+      // Register as student
+      ws.send(JSON.stringify({
+        type: 'register-student',
         studentId: studentName,
         studentName: studentName
-      });
+      }));
 
       // Capture and send frames
       intervalRef.current = window.setInterval(() => {
@@ -94,12 +133,14 @@ const StudentTest: React.FC<StudentTestProps> = () => {
       setIsTestStarted(true);
     } catch (err) {
       console.error('Error starting screen share:', err);
-      alert('Screen sharing is required to take the test. Please try again and allow screen sharing.');
+      setConnectionStatus('disconnected');
+      alert('Failed to start test. Make sure:\n1. The server is running (node server.js)\n2. You allow screen sharing');
     }
   };
 
   const captureAndSendFrame = () => {
-    if (!videoRef.current || !canvasRef.current) return;
+    if (!videoRef.current || !canvasRef.current || !wsRef.current) return;
+    if (wsRef.current.readyState !== WebSocket.OPEN) return;
     
     const video = videoRef.current;
     const canvas = canvasRef.current;
@@ -113,12 +154,12 @@ const StudentTest: React.FC<StudentTestProps> = () => {
     
     const frameData = canvas.toDataURL('image/jpeg', 0.5);
     
-    channelRef.current?.postMessage({
+    wsRef.current.send(JSON.stringify({
       type: 'screen-frame',
       studentId: studentName,
       frame: frameData,
       timestamp: Date.now()
-    });
+    }));
   };
 
   const handleStartTest = () => {
@@ -130,17 +171,9 @@ const StudentTest: React.FC<StudentTestProps> = () => {
   };
 
   const handleEndTest = () => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-    }
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-    }
-    channelRef.current?.postMessage({
-      type: 'student-left',
-      studentId: studentName
-    });
+    cleanup();
     setIsTestStarted(false);
+    setConnectionStatus('disconnected');
     alert('Test submitted successfully!');
   };
 
@@ -166,8 +199,12 @@ const StudentTest: React.FC<StudentTestProps> = () => {
             />
           </div>
           
-          <button className="start-btn" onClick={handleStartTest}>
-            🚀 Start Test
+          <button 
+            className="start-btn" 
+            onClick={handleStartTest}
+            disabled={connectionStatus === 'connecting'}
+          >
+            {connectionStatus === 'connecting' ? '⏳ Connecting...' : '🚀 Start Test'}
           </button>
           
           <p className="note">
@@ -186,7 +223,9 @@ const StudentTest: React.FC<StudentTestProps> = () => {
       
       <div className="test-header">
         <div className="student-info">
-          <span className="recording-indicator">🔴 Recording</span>
+          <span className="recording-indicator">
+            {connectionStatus === 'connected' ? '🔴 Recording' : '⚪ Disconnected'}
+          </span>
           <span>Student: <strong>{studentName}</strong></span>
         </div>
         <div className="progress">

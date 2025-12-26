@@ -8,62 +8,123 @@ interface Student {
   isActive: boolean;
 }
 
+// Get WebSocket URL based on current location
+const getWebSocketUrl = () => {
+  const hostname = window.location.hostname;
+  return `ws://${hostname}:3001`;
+};
+
 const AdminPanel: React.FC = () => {
   const [students, setStudents] = useState<Record<string, Student>>({});
   const [selectedStudent, setSelectedStudent] = useState<string | null>(null);
-  const channelRef = useRef<BroadcastChannel | null>(null);
+  const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected'>('disconnected');
+  const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
-    channelRef.current = new BroadcastChannel('proctoring-channel');
+    connectWebSocket();
     
-    channelRef.current.onmessage = (event) => {
-      const { type, studentId, studentName, frame, timestamp } = event.data;
-      
-      switch (type) {
-        case 'student-joined':
-          setStudents(prev => ({
-            ...prev,
-            [studentId]: {
-              id: studentId,
-              name: studentName,
-              lastFrame: null,
-              lastUpdate: Date.now(),
-              isActive: true
-            }
-          }));
-          break;
-          
-        case 'screen-frame':
-          setStudents(prev => ({
-            ...prev,
-            [studentId]: {
-              ...prev[studentId],
-              lastFrame: frame,
-              lastUpdate: timestamp,
-              isActive: true
-            }
-          }));
-          break;
-          
-        case 'student-left':
-          setStudents(prev => {
-            const updated = { ...prev };
-            if (updated[studentId]) {
-              updated[studentId] = { ...updated[studentId], isActive: false };
-            }
-            return updated;
-          });
-          if (selectedStudent === studentId) {
-            setSelectedStudent(null);
-          }
-          break;
+    return () => {
+      if (wsRef.current) {
+        wsRef.current.close();
       }
     };
+  }, []);
 
-    return () => {
-      channelRef.current?.close();
+  const connectWebSocket = () => {
+    setConnectionStatus('connecting');
+    const ws = new WebSocket(getWebSocketUrl());
+    
+    ws.onopen = () => {
+      console.log('Admin connected to WebSocket');
+      setConnectionStatus('connected');
+      
+      // Register as admin
+      ws.send(JSON.stringify({ type: 'register-admin' }));
     };
-  }, [selectedStudent]);
+    
+    ws.onmessage = (event) => {
+      try {
+        const message = JSON.parse(event.data);
+        
+        switch (message.type) {
+          case 'student-list':
+            // Initial list of students
+            const initial: Record<string, Student> = {};
+            message.students.forEach((s: { id: string; name: string }) => {
+              initial[s.id] = {
+                id: s.id,
+                name: s.name,
+                lastFrame: null,
+                lastUpdate: Date.now(),
+                isActive: true
+              };
+            });
+            setStudents(initial);
+            break;
+            
+          case 'student-joined':
+            setStudents(prev => ({
+              ...prev,
+              [message.studentId]: {
+                id: message.studentId,
+                name: message.studentName,
+                lastFrame: null,
+                lastUpdate: Date.now(),
+                isActive: true
+              }
+            }));
+            break;
+            
+          case 'screen-frame':
+            setStudents(prev => ({
+              ...prev,
+              [message.studentId]: {
+                ...prev[message.studentId],
+                lastFrame: message.frame,
+                lastUpdate: message.timestamp,
+                isActive: true
+              }
+            }));
+            break;
+            
+          case 'student-left':
+            setStudents(prev => {
+              const updated = { ...prev };
+              if (updated[message.studentId]) {
+                updated[message.studentId] = { ...updated[message.studentId], isActive: false };
+              }
+              return updated;
+            });
+            if (selectedStudent === message.studentId) {
+              setSelectedStudent(null);
+            }
+            break;
+        }
+      } catch (err) {
+        console.error('Error parsing message:', err);
+      }
+    };
+    
+    ws.onerror = (err) => {
+      console.error('WebSocket error:', err);
+      setConnectionStatus('disconnected');
+    };
+    
+    ws.onclose = () => {
+      console.log('WebSocket closed');
+      setConnectionStatus('disconnected');
+      
+      // Try to reconnect after 3 seconds
+      setTimeout(() => {
+        if (wsRef.current?.readyState === WebSocket.CLOSED) {
+          console.log('Attempting to reconnect...');
+          connectWebSocket();
+        }
+      }, 3000);
+    };
+    
+    wsRef.current = ws;
+  };
 
   const activeStudents = Object.values(students).filter(s => s.isActive);
   const selectedStudentData = selectedStudent ? students[selectedStudent] : null;
@@ -73,6 +134,10 @@ const AdminPanel: React.FC = () => {
       <div className="admin-header">
         <h1>🎓 Proctoring Admin Panel</h1>
         <div className="stats">
+          <span className={`stat connection-status ${connectionStatus}`}>
+            {connectionStatus === 'connected' ? '🟢 Connected' : 
+             connectionStatus === 'connecting' ? '🟡 Connecting...' : '🔴 Disconnected'}
+          </span>
           <span className="stat">
             <strong>{activeStudents.length}</strong> Active Students
           </span>
@@ -84,7 +149,12 @@ const AdminPanel: React.FC = () => {
         <div className="students-sidebar">
           <h2>Active Students</h2>
           
-          {activeStudents.length === 0 ? (
+          {connectionStatus !== 'connected' ? (
+            <div className="no-students">
+              <p>⚠️ Not connected to server</p>
+              <p className="hint">Make sure the server is running:<br/><code>node server.js</code></p>
+            </div>
+          ) : activeStudents.length === 0 ? (
             <div className="no-students">
               <p>👀 Waiting for students...</p>
               <p className="hint">Students will appear here once they start a test.</p>
