@@ -99,9 +99,11 @@ const StudentTest: React.FC<StudentTestProps> = () => {
   const startScreenShare = async () => {
     try {
       setConnectionStatus('connecting');
+      console.log('Starting screen share process...');
       
       // Connect to WebSocket server first
       const ws = await connectWebSocket();
+      console.log('WebSocket connected, requesting screen share...');
       
       // Request screen share
       const stream = await navigator.mediaDevices.getDisplayMedia({
@@ -113,30 +115,39 @@ const StudentTest: React.FC<StudentTestProps> = () => {
         audio: false
       });
       
+      console.log('Screen share granted, setting up video...');
       streamRef.current = stream;
       
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        
-        // Wait for video to be ready before starting capture
-        videoRef.current.onloadedmetadata = () => {
-          console.log('Video metadata loaded, dimensions:', videoRef.current?.videoWidth, 'x', videoRef.current?.videoHeight);
-          videoRef.current?.play().then(() => {
-            console.log('Video playing, starting frame capture');
-            // Start capturing frames after video is ready
-            intervalRef.current = window.setInterval(() => {
-              captureAndSendFrame();
-            }, 500); // Send frame every 500ms
-          }).catch(err => console.error('Error playing video:', err));
-        };
-      }
-
-      // Register as student
+      // Register as student immediately
       ws.send(JSON.stringify({
         type: 'register-student',
         studentId: studentName,
         studentName: studentName
       }));
+      console.log('Registered as student:', studentName);
+
+      if (videoRef.current) {
+        const video = videoRef.current;
+        video.srcObject = stream;
+        
+        // Try to play the video
+        try {
+          await video.play();
+          console.log('Video is playing');
+        } catch (playErr) {
+          console.log('Autoplay blocked, video should still work:', playErr);
+        }
+        
+        // Start frame capture after a short delay to ensure video is ready
+        setTimeout(() => {
+          console.log('Starting frame capture interval...');
+          console.log('Video dimensions:', video.videoWidth, 'x', video.videoHeight);
+          
+          intervalRef.current = window.setInterval(() => {
+            captureAndSendFrame();
+          }, 500); // Send frame every 500ms
+        }, 1000); // Wait 1 second for video to initialize
+      }
 
       stream.getVideoTracks()[0].onended = () => {
         handleEndTest();
