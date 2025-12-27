@@ -105,7 +105,11 @@ const StudentTest: React.FC<StudentTestProps> = () => {
       
       // Request screen share
       const stream = await navigator.mediaDevices.getDisplayMedia({
-        video: { frameRate: 5 },
+        video: { 
+          frameRate: 5,
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        },
         audio: false
       });
       
@@ -113,6 +117,18 @@ const StudentTest: React.FC<StudentTestProps> = () => {
       
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+        
+        // Wait for video to be ready before starting capture
+        videoRef.current.onloadedmetadata = () => {
+          console.log('Video metadata loaded, dimensions:', videoRef.current?.videoWidth, 'x', videoRef.current?.videoHeight);
+          videoRef.current?.play().then(() => {
+            console.log('Video playing, starting frame capture');
+            // Start capturing frames after video is ready
+            intervalRef.current = window.setInterval(() => {
+              captureAndSendFrame();
+            }, 500); // Send frame every 500ms
+          }).catch(err => console.error('Error playing video:', err));
+        };
       }
 
       // Register as student
@@ -121,11 +137,6 @@ const StudentTest: React.FC<StudentTestProps> = () => {
         studentId: studentName,
         studentName: studentName
       }));
-
-      // Capture and send frames
-      intervalRef.current = window.setInterval(() => {
-        captureAndSendFrame();
-      }, 500); // Send frame every 500ms
 
       stream.getVideoTracks()[0].onended = () => {
         handleEndTest();
@@ -140,20 +151,30 @@ const StudentTest: React.FC<StudentTestProps> = () => {
   };
 
   const captureAndSendFrame = () => {
-    if (!videoRef.current || !canvasRef.current || !wsRef.current) return;
-    if (wsRef.current.readyState !== WebSocket.OPEN) return;
+    if (!videoRef.current || !canvasRef.current || !wsRef.current) {
+      console.log('Missing refs:', { video: !!videoRef.current, canvas: !!canvasRef.current, ws: !!wsRef.current });
+      return;
+    }
+    if (wsRef.current.readyState !== WebSocket.OPEN) {
+      console.log('WebSocket not open, state:', wsRef.current.readyState);
+      return;
+    }
     
     const video = videoRef.current;
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
     
-    if (!ctx || video.videoWidth === 0) return;
+    if (!ctx || video.videoWidth === 0) {
+      console.log('Canvas context or video not ready:', { ctx: !!ctx, videoWidth: video.videoWidth });
+      return;
+    }
 
     canvas.width = video.videoWidth / 2;
     canvas.height = video.videoHeight / 2;
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     
     const frameData = canvas.toDataURL('image/jpeg', 0.5);
+    console.log('Sending frame, size:', frameData.length, 'bytes');
     
     wsRef.current.send(JSON.stringify({
       type: 'screen-frame',
