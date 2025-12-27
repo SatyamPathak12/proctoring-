@@ -217,6 +217,10 @@ const StudentTest: React.FC<StudentTestProps> = () => {
   if (!isTestStarted) {
     return (
       <div className="student-container">
+        {/* Hidden video and canvas for screen capture - must be present before test starts */}
+        <video ref={videoRef} autoPlay muted playsInline style={{ display: 'none' }} />
+        <canvas ref={canvasRef} style={{ display: 'none' }} />
+        
         <div className="start-test-card">
           <h1>📝 Online Test Portal</h1>
           <p>Enter your name to begin the test. Screen sharing will be required for proctoring.</p>
