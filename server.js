@@ -67,6 +67,7 @@ wss.on('connection', (ws) => {
           
         case 'screen-frame':
           // Forward screen frame to all admins
+          console.log(`📸 Received frame from ${message.studentId}, forwarding to ${admins.size} admins`);
           admins.forEach(adminWs => {
             if (adminWs.readyState === 1) {
               adminWs.send(JSON.stringify({
