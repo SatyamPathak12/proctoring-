@@ -33,12 +33,14 @@ wss.on('connection', (ws) => {
           ws.isAdmin = true;
           console.log('✅ Admin connected. Total admins:', admins.size);
           
-          // Send current student list to new admin
+          // Send current student list to new admin (including examId and examName!)
           const studentList = [];
           students.forEach((studentWs, studentId) => {
             studentList.push({
               id: studentId,
-              name: studentWs.studentName
+              name: studentWs.studentName,
+              examId: studentWs.examId || null,
+              examName: studentWs.examName || null
             });
           });
           ws.send(JSON.stringify({
