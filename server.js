@@ -50,8 +50,10 @@ wss.on('connection', (ws) => {
         case 'register-student':
           ws.studentId = message.studentId;
           ws.studentName = message.studentName;
+          ws.examId = message.examId || null;
+          ws.examName = message.examName || 'Unknown Exam';
           students.set(message.studentId, ws);
-          console.log(`✅ Student "${message.studentName}" connected. Total students:`, students.size);
+          console.log(`✅ Student "${message.studentName}" connected for exam "${message.examName}". Total students:`, students.size);
           
           // Notify all admins about new student
           admins.forEach(adminWs => {
@@ -59,7 +61,9 @@ wss.on('connection', (ws) => {
               adminWs.send(JSON.stringify({
                 type: 'student-joined',
                 studentId: message.studentId,
-                studentName: message.studentName
+                studentName: message.studentName,
+                examId: message.examId,
+                examName: message.examName
               }));
             }
           });
