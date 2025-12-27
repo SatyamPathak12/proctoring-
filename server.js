@@ -94,6 +94,21 @@ wss.on('connection', (ws) => {
             }
           });
           break;
+          
+        case 'terminate-exam':
+          // Admin wants to terminate a student's exam
+          console.log(`🚫 Admin terminating exam for student: ${message.studentId}, reason: ${message.reason}`);
+          const studentWs = students.get(message.studentId);
+          if (studentWs && studentWs.readyState === 1) {
+            studentWs.send(JSON.stringify({
+              type: 'exam-terminated',
+              reason: message.reason || 'Exam terminated by administrator due to policy violation.'
+            }));
+            console.log(`✅ Termination notice sent to student ${message.studentId}`);
+          } else {
+            console.log(`⚠️ Student ${message.studentId} not found or disconnected`);
+          }
+          break;
       }
     } catch (err) {
       console.error('Error parsing message:', err);

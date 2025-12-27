@@ -91,6 +91,20 @@ const StudentTest: React.FC<StudentTestProps> = () => {
         console.log('WebSocket closed');
         setConnectionStatus('disconnected');
       };
+
+      ws.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data);
+          if (message.type === 'exam-terminated') {
+            console.log('Test terminated by admin:', message.reason);
+            // Show alert and end test
+            alert(`🚫 TEST TERMINATED\n\nYour test has been terminated by the administrator.\n\nReason: ${message.reason}`);
+            handleEndTest();
+          }
+        } catch (err) {
+          console.error('Error parsing message:', err);
+        }
+      };
       
       wsRef.current = ws;
     });

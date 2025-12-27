@@ -130,6 +130,30 @@ const AdminPanel: React.FC = () => {
   const activeStudents = Object.values(students).filter(s => s.isActive);
   const selectedStudentData = selectedStudent ? students[selectedStudent] : null;
 
+  // Terminate a student's test
+  const terminateStudentTest = (studentId: string, studentName: string) => {
+    const reason = window.prompt(
+      `⚠️ TERMINATE TEST\n\nYou are about to terminate the test for:\n${studentName}\n\nEnter the reason for termination:`,
+      'Malpractice detected during proctoring'
+    );
+
+    if (reason === null) return; // User cancelled
+
+    const confirmed = window.confirm(
+      `Are you sure you want to terminate the test for ${studentName}?\n\nReason: ${reason}\n\nThis will immediately end their test.`
+    );
+
+    if (confirmed && wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        type: 'terminate-exam',
+        studentId: studentId,
+        reason: reason
+      }));
+      console.log(`Sent termination request for student: ${studentId}`);
+      alert(`Termination notice sent to ${studentName}`);
+    }
+  };
+
   return (
     <div className="admin-container">
       <div className="admin-header">
@@ -217,6 +241,12 @@ const AdminPanel: React.FC = () => {
               </div>
               <div className="view-footer">
                 <span>Last update: {new Date(selectedStudentData.lastUpdate).toLocaleTimeString()}</span>
+                <button 
+                  className="terminate-btn"
+                  onClick={() => terminateStudentTest(selectedStudentData.id, selectedStudentData.name)}
+                >
+                  🚫 Terminate Test
+                </button>
               </div>
             </div>
           ) : (
